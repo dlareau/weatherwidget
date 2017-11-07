@@ -1,0 +1,4 @@
+const char* ssid     = "your_wifi_ssid";
+const char* password = "your_wifi_password";
+const char* api_key = "your_darksky_api_key";
+const char* lat_long = "your_lat,your_long";
