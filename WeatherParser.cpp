@@ -13,12 +13,6 @@ int minute_from_timecode(int timecode){
   return minute;
 }
 
-void shift_array(float *array, int amount){
-  for(int i = 60; i < 130; i++){
-    array[i-60] = array[i];
-  }
-}
-
 float *WeatherListener::getHourChance(){
   return hour_chance;
 }
@@ -35,10 +29,21 @@ float *WeatherListener::getMinuteIntensity(){
   return minute_intensity;
 }
 
+int getCurrentMinute(){
+  return minute_from_timecode(start_timecode);
+}
+
+int getCurrentHour(){
+  return hour_from_timecode(start_timecode);
+}
+
 void WeatherListener::whitespace(char c) {
 }
 
 void WeatherListener::startDocument() {
+  current_day = 0;
+  current_hour = 0;
+  current_minute = 0;
 }
 
 void WeatherListener::key(String key) {
@@ -61,40 +66,32 @@ void WeatherListener::value(String value) {
     if(current_hour == 0){
       current_hour = timecode - (timecode % 3600);
     }
+    if(start_timecode == 0){
+      start_timecode = timecode;
+    }
     if(current_type == "minutely"){
       minute_index = (timecode - current_hour) / 60;
-      if(minute_index >= 120){
-        shift_array(minute_chance, 60);
-        shift_array(minute_intensity, 60);
-        minute_index -= 60;
-      }
     } else if(current_type == "hourly"){
       hour_index = (timecode - current_day) / 3600;
     }
-  } else if (current_key == "precipIntensity"){
+  }
+
+  else if (current_key == "precipIntensity"){
     if(current_type == "minutely"){
       minute_intensity[minute_index] = value.toFloat();
     } else if(current_type == "hourly"){
       hour_intensity[hour_index] = value.toFloat();
     }
-  } else if (current_key == "precipProbability"){
+  }
+
+  else if (current_key == "precipProbability"){
     if(current_type == "minutely"){
       minute_chance[minute_index] = value.toFloat();
+      minute_index++;
     } else if(current_type == "hourly"){
       hour_chance[hour_index] = value.toFloat();
+      hour_index++;
     }
-  }
-  
-  if(current_key == "precipIntensity" && current_type == "minutely"){
-    minute_intensity[minute_index] = value.toFloat();
-  } else if(current_key == "precipProbability" && current_type == "minutely"){
-    minute_chance[minute_index] = value.toFloat();
-    minute_index++;
-  } else if(current_key == "precipIntensity" && current_type == "hourly"){
-    hour_intensity[hour_index] = value.toFloat();
-  } else if(current_key == "precipProbability" && current_type == "hourly"){
-    hour_chance[hour_index] = value.toFloat();
-    hour_index++;
   }
 }
 

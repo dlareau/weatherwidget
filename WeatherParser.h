@@ -9,12 +9,13 @@ class WeatherListener: public JsonListener {
     int data_state = 0;
     float hour_chance[73];
     float hour_intensity[73];
-    float minute_chance[130];
-    float minute_intensity[130];
+    float minute_chance[121];
+    float minute_intensity[121];
     int hour_index = 0;
     int minute_index = 0;
     int current_day = 0;
     int current_hour = 0;
+    int start_timecode = 0;
 
   public:
     virtual void whitespace(char c);
@@ -42,4 +43,8 @@ class WeatherListener: public JsonListener {
     float *getMinuteChance();
 
     float *getMinuteIntensity();
+
+    int getCurrentMinute();
+
+    int getCurrentHour();
 };

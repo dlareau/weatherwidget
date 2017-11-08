@@ -210,10 +210,11 @@ void setup() {
 void loop() {
   getWeather();
   setLeds();
-  for(int i = 0; i < 20; i++){
+  for(int i = 0; i < 15; i++){
     if(i != 0)
       delay(1000);
-    toggleLed(35);
+    toggleLed(listener.getCurrentHour());
+    toggleLed((listener.getCurrentMinute()/3)+25);
   }
 }
 
