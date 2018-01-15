@@ -13,6 +13,14 @@ int minute_from_timecode(int timecode){
   return minute;
 }
 
+float WeatherListener::getTempHigh(){
+  return temp_high;
+}
+
+float WeatherListener::getTempLow(){
+  return temp_low;
+}
+
 float *WeatherListener::getHourChance(){
   return hour_chance;
 }
@@ -29,11 +37,11 @@ float *WeatherListener::getMinuteIntensity(){
   return minute_intensity;
 }
 
-int getCurrentMinute(){
+int WeatherListener::getCurrentMinute(){
   return minute_from_timecode(start_timecode);
 }
 
-int getCurrentHour(){
+int WeatherListener::getCurrentHour(){
   return hour_from_timecode(start_timecode);
 }
 
@@ -41,9 +49,11 @@ void WeatherListener::whitespace(char c) {
 }
 
 void WeatherListener::startDocument() {
+  Serial.println("reseting timecode");
   current_day = 0;
   current_hour = 0;
-  current_minute = 0;
+  start_timecode = 0;
+  temp_set = 0;
 }
 
 void WeatherListener::key(String key) {
@@ -54,12 +64,26 @@ void WeatherListener::key(String key) {
   } else if(current_key == "hourly"){
     current_type = "hourly";
     hour_index = 0;
+  } else if(current_key == "daily"){
+    current_type = "daily";
   }
 }
 
 void WeatherListener::value(String value) {
+  if(current_type == "daily"){
+    if (current_key == "apparentTemperatureHigh" && temp_set != 2){
+      temp_low = value.toFloat();
+      temp_set++;
+    }
+
+    else if (current_key == "apparentTemperatureLow" && temp_set != 2){
+      temp_high = value.toFloat();
+      temp_set++;
+    }
+    return;
+  }
   if(current_key == "time"){
-    int timecode = value.toInt() - 14400;
+    int timecode = value.toInt() - 18000;
     if(current_day == 0){
       current_day = timecode - (timecode % 86400);
     }
@@ -67,7 +91,10 @@ void WeatherListener::value(String value) {
       current_hour = timecode - (timecode % 3600);
     }
     if(start_timecode == 0){
+      Serial.println("setting timecode");
       start_timecode = timecode;
+      Serial.print("timecode is ");
+      Serial.println(timecode);
     }
     if(current_type == "minutely"){
       minute_index = (timecode - current_hour) / 60;

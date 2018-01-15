@@ -2,6 +2,7 @@
 #include "JsonListener.h"
 #include "WeatherParser.h"
 #include "parameters.h"
+#include <stdio.h>
 
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
@@ -12,13 +13,27 @@
 #endif
 
 #define STRIP_PIN D6
+#define LOG_OFF 0
+#define LOG_INFO 1
+#define LOG_DEBUG 2
+
+int log_level = LOG_INFO;
+
+typedef struct toggle_st{
+  uint32_t color;
+  int led_num;
+  int is_active;
+} toggle_t;
+
+toggle_t hour_toggle;
+toggle_t minute_toggle;
 
 JsonStreamingParser parser;
 WeatherListener listener;
 
 const char* host = "api.darksky.net";
 const char* api_dest = "/forecast/";
-const char* parameters = "?exclude=currently,daily,alerts,flags";
+const char* parameters = "?exclude=currently,alerts,flags";
 const int httpsPort = 443;
 
 int gam[] = {
@@ -41,6 +56,89 @@ int gam[] = {
 };
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(60, STRIP_PIN, NEO_GRBW + NEO_KHZ800);
+
+int dataIn = D3;
+int load = D4;
+int clock1 = D5;
+
+// define max7219 registers
+byte max7219_reg_noop        = 0x00;
+byte max7219_reg_decodeMode  = 0x09;
+byte max7219_reg_intensity   = 0x0a;
+byte max7219_reg_scanLimit   = 0x0b;
+byte max7219_reg_shutdown    = 0x0c;
+byte max7219_reg_displayTest = 0x0f;
+
+// RTop, LBottom, DP, Middle, LTop, Top, Bottom, RBottom
+int constants[10] = {
+  0b11001111,
+  0b10000001,
+  0b11010110,
+  0b10010111,
+  0b10011001,
+  0b00011111,
+  0b01011111,
+  0b10000101,
+  0b11011111,
+  0b10011111
+};
+
+void log(String message, int req_level) {
+  if(req_level <= log_level){
+    Serial.print(message);
+  }
+}
+
+void log_ln(String message, int req_level) {
+  log(message, req_level);
+  log("\n", req_level);
+}
+
+void putByte(byte data) {
+  byte i = 8;
+  byte mask;
+  while(i > 0) {
+    mask = 0x01 << (i - 1);      // get bitmask
+    digitalWrite( clock1, LOW);   // tick
+    if (data & mask){            // choose bit
+      digitalWrite(dataIn, HIGH);// send 1
+    }else{
+      digitalWrite(dataIn, LOW); // send 0
+    }
+    digitalWrite(clock1, HIGH);   // tock
+    --i;                         // move to lesser bit
+  }
+}
+
+void maxSingle(byte reg, byte col) {
+  //maxSingle is the "easy"  function to use for a single max7219
+  digitalWrite(load, LOW);       // begin
+  putByte(reg);                  // specify register
+  putByte(col);                  // put data
+  digitalWrite(load, LOW);       // and load da stuff
+  digitalWrite(load,HIGH);
+}
+
+void disp_num(int num, int is_top){
+  int ldisplay, rdisplay;
+  if(is_top){
+    ldisplay = 1;
+    rdisplay = 3;
+  } else {
+    ldisplay = 2;
+    rdisplay = 5;
+  }
+  if(num < -9){
+    maxSingle(ldisplay,0b01010001);
+    maxSingle(rdisplay,0b01010011);
+  } else if(num < 0){
+    maxSingle(ldisplay,0b00010000);
+    maxSingle(rdisplay,constants[(num*(-1))%10]);
+  } else {
+    maxSingle(ldisplay,constants[(num/10)%10]);
+    maxSingle(rdisplay,constants[num%10]);
+  }
+}
 
 uint32_t HSVtoRGB(int hue, int sat, int val) {  
   val = gam[val];
@@ -70,38 +168,36 @@ uint32_t HSVtoRGB(int hue, int sat, int val) {
 
 void connectToWifi(){
   delay(10);
-  Serial.println();
 
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
+  log("\nConnecting to ", LOG_INFO);
+  log_ln(ssid, LOG_INFO);
   
   WiFi.begin(ssid, password);
   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
+    log(".", LOG_INFO);
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected");  
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+  log("\nWiFi connected\nIP address: ", LOG_INFO);
+  log_ln(WiFi.localIP().toString(), LOG_INFO);
 }
 
 void getWeather(){
   WiFiClientSecure client; 
   char cur_char;
+  parser.reset();
 
-  Serial.print("Connecting to ");
-  Serial.println(host);
+  log("Connecting to ", LOG_INFO);
+  log_ln(host, LOG_INFO);
   
   if (!client.connect(host, httpsPort)) {
-    Serial.println("Connection failed");
+    log_ln("Connection failed", LOG_INFO);
     return;
   }
 
-  Serial.print("Requesting URL: ");
-  Serial.println(url);
+  log("Requesting URL: ", LOG_INFO);
+  log_ln(String("") + api_dest + api_key + "/" + lat_long + parameters, LOG_INFO);
   
   // This will send the request to the server
   client.print(String("GET ") +
@@ -111,14 +207,13 @@ void getWeather(){
 
   delay(10);
 
-  parser.setListener(&listener);
+  log_ln("Request sent", LOG_INFO);
 
   // Read all the lines of the reply from server and print them to Serial
-  Serial.println("Request sent");
   while (client.connected()) {
     String line = client.readStringUntil('\n');
     if (line == "\r") {
-      Serial.println("Recieved headers");
+      log_ln("Recieved headers", LOG_INFO);
       break;
     }
   }
@@ -128,7 +223,7 @@ void getWeather(){
     cur_char = client.read();
   }
 
-  Serial.println("Weather data successfully parsed");
+  log_ln("Weather data successfully parsed", LOG_INFO);
 }
 
 void setLeds(){
@@ -136,29 +231,32 @@ void setLeds(){
   float *hour_intensity = listener.getHourIntensity();
 
   for(int i = 0; i < 24; i++){
-    int hue = 240-int(hour_chance[i+24]*400);
+    int hue = 240 - int(hour_chance[i]*400);
     int saturation = 255;
-    int value = hour_intensity[i+24]*10000;
+    int value = hour_intensity[i]*10000;
 
     if(hue < 0)
       hue = 0;
     if(value > 255)
       value = 255;
 
+    log_ln("Data:",                           LOG_DEBUG);
+    log_ln(String(hour_intensity[i]),         LOG_DEBUG);
+    log_ln(String(hour_intensity[i]*10000),   LOG_DEBUG);
+    log_ln("HSV:",                            LOG_DEBUG);
+    log_ln(String(hue),                       LOG_DEBUG);
+    log_ln(String(value),                     LOG_DEBUG);
     uint32_t color = HSVtoRGB(hue, saturation, value);
     strip.setPixelColor(i, color);
-    /* Serial.print(hour_chance[i]);
-    Serial.print(" ");
-    Serial.println(hour_intensity[i]); */
   }
 
   float *minute_chance = listener.getMinuteChance();
   float *minute_intensity = listener.getMinuteIntensity();
 
   for(int i = 0; i < 20; i++){
-    int hue = 100+i*3; //240-int(minute_chance[i*3]*400);
+    int hue = 240-int(minute_chance[i*3]*400);
     int saturation = 255;
-    int value = 100+i*3; //minute_intensity[i*3]*10000;
+    int value = minute_intensity[i*3]*10000;
 
     if(hue < 0)
       hue = 0;
@@ -167,54 +265,67 @@ void setLeds(){
 
     uint32_t color = HSVtoRGB(hue, saturation, value);
     strip.setPixelColor(44-i, color);
-    /* Serial.print(hour_chance[i]);
-    Serial.print(" ");
-    Serial.println(hour_intensity[i]); */
   }
 
   strip.show();
 }
 
-void toggleLed(int led_num) {
-  static int off_led_num = 0;
-  static int is_off = 0;
-  static uint32_t stored_color = 0;
-
-  if(is_off == 1){
-    strip.setPixelColor(off_led_num, stored_color);
-    is_off = 0;
+void toggleLed(int led_num, toggle_t *info) {
+  if(info->is_active){
+    strip.setPixelColor(info->led_num, info->color);
+    info->is_active = 0;
   } else {
-    stored_color = strip.getPixelColor(led_num);
-    is_off = 1;
-    off_led_num = led_num;
+    int stored_color = strip.getPixelColor(led_num);
     int curr_r = (stored_color >> 16) & 0xFF;
     int curr_g = (stored_color >> 8) & 0xFF;
     int curr_b = stored_color & 0xFF;
-    strip.setPixelColor(off_led_num, curr_r, curr_g, curr_b, 20);
+
+    strip.setPixelColor(led_num, 40, 40, 20);
+    info->led_num = led_num;
+    info->color = stored_color;
+    info->is_active = 1;
   }
-  strip.show();
+  return;
 }
 
 
 void setup() {
+  pinMode(dataIn, OUTPUT);
+  pinMode(clock1,  OUTPUT);
+  pinMode(load,   OUTPUT);
+
+  //initiation of the max 7219d
+  maxSingle(max7219_reg_scanLimit, 0x07);
+  maxSingle(max7219_reg_decodeMode, 0x00);  // using an led matrix (not digits)
+  maxSingle(max7219_reg_shutdown, 0x01);    // not in shutdown mode
+  maxSingle(max7219_reg_displayTest, 0x00); // no display test
+  for (int e=1; e<=8; e++) {    // empty registers, turn all LEDs off
+    maxSingle(e,0);
+  }
+  maxSingle(max7219_reg_intensity, 0x0f); // intensity, 0x00 to 0x0f
+
   strip.begin();
   strip.show();
   
   Serial.begin(115200);
+  parser.setListener(&listener);
 
   connectToWifi();
 
   delay(1000);
+
 }
 
 void loop() {
   getWeather();
   setLeds();
-  for(int i = 0; i < 15; i++){
+  disp_num((int)listener.getTempHigh(), 0);
+  disp_num((int)listener.getTempLow(), 1);
+  for(int i = 0; i < 90; i++){
     if(i != 0)
       delay(1000);
-    toggleLed(listener.getCurrentHour());
-    toggleLed((listener.getCurrentMinute()/3)+25);
+    toggleLed(listener.getCurrentHour(), &hour_toggle);
+    toggleLed(44-(listener.getCurrentMinute()/3), &minute_toggle);
+    strip.show();
   }
 }
-

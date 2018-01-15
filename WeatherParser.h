@@ -16,6 +16,9 @@ class WeatherListener: public JsonListener {
     int current_day = 0;
     int current_hour = 0;
     int start_timecode = 0;
+    float temp_high = 0;
+    float temp_low = 0;
+    int temp_set = 0;
 
   public:
     virtual void whitespace(char c);
@@ -47,4 +50,8 @@ class WeatherListener: public JsonListener {
     int getCurrentMinute();
 
     int getCurrentHour();
+
+    float getTempHigh();
+
+    float getTempLow();
 };
