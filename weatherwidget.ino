@@ -128,10 +128,12 @@ void disp_num(int num, int is_top){
     ldisplay = 2;
     rdisplay = 5;
   }
-  if(num < -9){
+  if(num < -9 || num > 99){
+    // Display no
     maxSingle(ldisplay,0b01010001);
     maxSingle(rdisplay,0b01010011);
   } else if(num < 0){
+    // Display a negative sign
     maxSingle(ldisplay,0b00010000);
     maxSingle(rdisplay,constants[(num*(-1))%10]);
   } else {
@@ -144,7 +146,7 @@ uint32_t HSVtoRGB(int hue, int sat, int val) {
   val = gam[val];
   sat = 255-gam[255-sat];
 
-  if (sat == 0) { // Acromatic color (gray). Hue doesn't mind.
+  if (sat == 0) { // Acromatic color (gray). Hue doesn't matter.
     return strip.Color(val, val, val);
   }
 
@@ -270,6 +272,8 @@ void setLeds(){
   strip.show();
 }
 
+// Toggles the LED between white and it's last stored value
+// Value is stored in info and white is considered active
 void toggleLed(int led_num, toggle_t *info) {
   if(info->is_active){
     strip.setPixelColor(info->led_num, info->color);
