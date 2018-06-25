@@ -29,23 +29,17 @@ extern "C" {
 #define CLOCK_PIN 14
 #define STRIP_PIN 4
 
-#define LOG_OFF 0
-#define LOG_INFO 1
-#define LOG_DEBUG 2
-
 #define TOP_LEFT   6
 #define TOP_CENTER 8
 #define TOP_RIGHT  2
 
-#define MID_LEFT   1
+#define MID_LEFT   0
 #define MID_CENTER 4
 #define MID_RIGHT  3
 
 #define BOT_LEFT   1
 #define BOT_CENTER 5
 #define BOT_RIGHT  7
-
-int log_level = LOG_INFO;
 
 typedef struct toggle_st{
   uint32_t color;
@@ -122,10 +116,6 @@ int constants[22] = {
   0b00100110, // middle n (20)
 };
 
-void show_strip() {
-  strip.show();
-}
-
 void putByte(byte data) {
   byte i = 8;
   byte mask;
@@ -154,17 +144,17 @@ void maxSingle(byte reg, byte col) {
 void disp_num(int num, int disp){
   int ldisplay, mdisplay, rdisplay;
   if(disp == 0){
-    ldisplay = 6;
-    mdisplay = 8;
-    rdisplay = 2;
+    ldisplay = TOP_LEFT;
+    mdisplay = TOP_CENTER;
+    rdisplay = TOP_RIGHT;
   } else if (disp == 1) {
-    ldisplay = 0;
-    mdisplay = 4;
-    rdisplay = 3;
+    ldisplay = MID_LEFT;
+    mdisplay = MID_CENTER;
+    rdisplay = MID_RIGHT;
   } else if (disp == 2) {
-    ldisplay = 1;
-    mdisplay = 5;
-    rdisplay = 7;
+    ldisplay = BOT_LEFT;
+    mdisplay = BOT_CENTER;
+    rdisplay = BOT_RIGHT;
   } else {
     return;
   }
@@ -232,10 +222,7 @@ void connectToWifi(){
 
 void getWeather(){
   BearSSL::WiFiClientSecure client;
-  Serial.println("Using bearSSL.");
-
   client.setInsecure();
-
 
   char cur_char;
   int result;
@@ -246,8 +233,6 @@ void getWeather(){
     return;
   }
   
-  Serial.println("Getting:");
-  Serial.println(String("") + api_dest + api_key + "/" + lat_long + parameters);
   // This will send the request to the server
   client.print(String("GET ") +
       api_dest + api_key + "/" + lat_long + parameters + " HTTP/1.1\r\n" +
@@ -256,7 +241,6 @@ void getWeather(){
 
   delay(10);
 
-  // Read all the lines of the reply from server and print them to Serial
   while (client.connected()) {
     String line = client.readStringUntil('\n');
     if (line == "\r") {
@@ -268,18 +252,11 @@ void getWeather(){
     if(cur_char != 0){
       parser.parse(cur_char);
     }
-    // Serial.print(cur_char);
-    // if(num_chars % 1000 == 0){
-    //   Serial.println("");
-    // }
     if(!client.connected()){
       Serial.println("DISCONNECTED");
       break;
     }
-    result = client.read((uint8_t *)(&cur_char), 1);
-    if(result != 1){
-      Serial.println(result);
-    }
+    client.read((uint8_t *)(&cur_char), 1);
   }
 }
 
@@ -318,7 +295,7 @@ void setLeds(){
     strip.setPixelColor(44-i, color);
   }
 
-  show_strip();
+  strip.show();
 }
 
 // Toggles the LED between white and it's last stored value
@@ -360,26 +337,17 @@ void setup() {
   maxSingle(max7219_reg_intensity, 0x0f); // intensity, 0x00 to 0x0f
 
   strip.begin();
-  show_strip();
+  strip.show();
   parser.setListener(&listener);
   connectToWifi();
 
   delay(1000);
 }
 
-// Fill the dots one after the other with a color
-void colorWipe(uint32_t c, uint8_t wait) {
-  for(uint16_t i=0; i<strip.numPixels(); i++) {
-    strip.setPixelColor(i, c);
-    show_strip();
-    delay(wait);
-  }
-}
-
 void loop() {
   getWeather();
   setLeds();
-  show_strip();
+  strip.show();
   disp_num((int)listener.getTempHigh(), 0);
   disp_num((int)listener.getTempCurrent(), 1);
   disp_num((int)listener.getTempLow(), 2);
@@ -387,6 +355,6 @@ void loop() {
     delay(1000);
     toggleLed(listener.getCurrentHour(), &hour_toggle);
     toggleLed(44-(listener.getCurrentMinute()/3), &minute_toggle);
-    show_strip();
+    strip.show();
   }
 }
